@@ -38,7 +38,7 @@ struct CalibrationData {
 	float t_lin;
 };
 
-struct CalibrationData calibration_data = {0};
+struct CalibrationData calibration_data = { 0 };
 
 static void readCalibrationData() {
 	int8_t data[21];
@@ -100,7 +100,7 @@ void barometer_init() {
 
 uint32_t barometer_press_raw(void) {
 	uint32_t data = 0;
-	cs0;;
+	cs0;
 	SPI_SendReceive(0x04 | 0x80);
 	SPI_SendReceive(0xff);
 	data |= SPI_SendReceive(0xff);
@@ -120,25 +120,39 @@ uint32_t barometer_temp_raw(void) {
 	cs1;
 	return data;
 }
+void barometer_readAllRaw(uint32_t* press_raw, uint32_t* temp_raw) {
+	cs0;
+	SPI_SendReceive(0x04 | 0x80);
+	SPI_SendReceive(0xff);
+	*press_raw |= SPI_SendReceive(0xff);
+	*press_raw |= (uint32_t)SPI_SendReceive(0xff) << 8;
+	*press_raw |= (uint32_t)SPI_SendReceive(0xff) << 16;
+	*temp_raw |= SPI_SendReceive(0xff);
+	*temp_raw |= (uint32_t)SPI_SendReceive(0xff) << 8;
+	*temp_raw |= (uint32_t)SPI_SendReceive(0xff) << 16;
+	cs1;
+}
 
-float barometer_temp(void) {
-	uint32_t uncomp_temp = barometer_temp_raw();
-
+float barometer_temp2(uint32_t uncomp_temp) {
 	float partial_data1;
 	float partial_data2;
 	partial_data1 = (float)(uncomp_temp - calibration_data.par_t1);
 	partial_data2 = (float)(partial_data1 * calibration_data.par_t2);
 	/* Update the compensated temperature in calib structure since this is
 	* needed for pressure calculation */
-	calibration_data.t_lin = 22;
+	calibration_data.t_lin = partial_data2 + (partial_data1 * partial_data1) * calibration_data.par_t3;
 	//calibration_data.t_lin = 1;
 	/* Returns compensated temperature */
 
 
 	return calibration_data.t_lin;
 }
-float barometer_press(void) {
-	uint32_t uncomp_press = barometer_press_raw();
+
+float barometer_temp(void) {
+	return barometer_temp2(barometer_temp_raw());
+}
+
+float barometer_press2(uint32_t uncomp_press) {
 	/* Variable to store the compensated pressure */
 	float comp_press;
 	/* Temporary variables used for compensation */
@@ -165,8 +179,13 @@ float barometer_press(void) {
 	return comp_press;
 }
 
+float barometer_press(void) {
+	return barometer_press2(barometer_press_raw());
+}
+
 float barometer_alt(float pressure, float temperature) {
-	float alt = (1.0f - powf(pressure / 101325, 0.190284f)) * (temperature + 273.15f) / 0.0065f;
+	float alt = (1.0f - powf(pressure / 101325.0f, 0.190284f)) * (temperature + 273.15f) / 0.0065f;
+	//float alt = (101325.0f-pressure) / 12.69f;
 	return alt;
 }
 
@@ -175,9 +194,10 @@ bool barometer_available() {
 }
 
 void barometer_readAll(float* press, float* alt, float* temp) {
-
-	*temp = barometer_temp();
-	*press = barometer_press();
+	uint32_t press_raw = 0, temp_raw = 0;
+	barometer_readAllRaw(&press_raw, &temp_raw);
+	*temp = barometer_temp2(temp_raw);
+	*press = barometer_press2(press_raw);
 	*alt = barometer_alt(*press, *temp) + BAR_ALT_OFFSET;
 }
 

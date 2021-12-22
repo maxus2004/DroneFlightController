@@ -1,5 +1,5 @@
 enum state_t {
-	STARTING,
+	STARTING = 0,
 	LANDED,
 	FLYING,
 	AUTO_LANDING,
@@ -8,8 +8,9 @@ enum state_t {
 
 enum error_t {
 	OK = 0,
-	TOO_HIGH_THRUST_ON_STARTUP = 1,
-	TOO_HIGH_THRUST_CHANGE = 2
+	TOO_HIGH_THRUST_ON_STARTUP,
+	TOO_HIGH_THRUST_CHANGE,
+	ORIENTATION_FAIL
 };
 
 extern enum state_t STATE;

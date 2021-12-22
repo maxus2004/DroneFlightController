@@ -58,6 +58,7 @@ uint32_t lastSonarDownData = 0;
 LPF smoothBarVSpeed;
 float vSpeed = 0;
 float altitude = 0, prevAltitude = 0;
+uint32_t orientationFailTimeout = 10*ticksPerSecond;
 
 enum altitudeMode_t {
 	BAROMETER = 0,
@@ -268,12 +269,12 @@ void readData() {
 	float distUp = -1, distDown = -1;
 	readDistances(&distUp, &distDown);
 	if (distUp > 0) {
-		sonarUpAlt = -distUp; // this should be negative
+		sonarUpAlt = -distUp;
 		lastSonarUpData = currentLoopTicks;
 	}
 	newSonarUpAlt = distUp > 0;
 	if (distDown > 0) {
-		sonarDownAlt = distDown; // this should NOT be negative
+		sonarDownAlt = distDown;
 		lastSonarDownData = currentLoopTicks;
 	}
 	newSonarDownAlt = distDown > 0;
@@ -281,9 +282,10 @@ void readData() {
 
 
 void calculateAltitude() {
-	//calculate altitude
 	prevAltitude = altitude;
 	prevAltitideCalcMode = altitideCalcMode;
+
+	//select best altitude calculation mode
 
 	if (sonarDownEnabled
 		&& currentLoopTicks < lastSonarDownData + ticksPerSecond / 5
@@ -304,6 +306,20 @@ void calculateAltitude() {
 		altitideCalcMode = BAROMETER;
 	}
 
+	//calculate vSpeed
+	if (dTime > 0) {
+		vSpeed += worldAcc.z * dTime;
+		if (newBarAlt) {
+			LPF_update(&smoothBarVSpeed, barAlt - prevBarAlt);
+			if (vSpeed < smoothBarVSpeed.value)
+				vSpeed += vSpeedK * BAROMETER_INTERVAL;
+			else {
+				vSpeed -= vSpeedK * BAROMETER_INTERVAL;
+			}
+		}
+	}
+
+	//calculate altitude
 	if (altitideCalcMode == SONAR_DOWN)
 	{
 		if (prevAltitideCalcMode != SONAR_DOWN)
@@ -317,16 +333,7 @@ void calculateAltitude() {
 
 		if (dTime > 0)
 		{
-			vSpeed += worldAcc.z * dTime;
-			if (newBarAlt) {
-				LPF_update(&smoothBarVSpeed, barAlt - prevBarAlt);
-				if (vSpeed < smoothBarVSpeed.value)
-					vSpeed += vSpeedK * BAROMETER_INTERVAL;
-				else {
-					vSpeed -= vSpeedK * BAROMETER_INTERVAL;
-				}
-			}
-
+			
 			altitude += vSpeed * dTime;
 			if (newSonarDownAlt) {
 				if (altitude < sonarDownAlt)
@@ -351,16 +358,6 @@ void calculateAltitude() {
 
 		if (dTime > 0)
 		{
-			vSpeed += worldAcc.z * dTime;
-			if (newBarAlt) {
-				LPF_update(&smoothBarVSpeed, barAlt - prevBarAlt);
-				if (vSpeed < smoothBarVSpeed.value)
-					vSpeed += vSpeedK * BAROMETER_INTERVAL;
-				else {
-					vSpeed -= vSpeedK * BAROMETER_INTERVAL;
-				}
-			}
-
 			altitude += vSpeed * dTime;
 			if (newSonarUpAlt) {
 				if (altitude < sonarUpAlt)
@@ -385,16 +382,6 @@ void calculateAltitude() {
 
 		if (dTime > 0)
 		{
-			vSpeed += worldAcc.z * dTime;
-			if (newBarAlt) {
-				LPF_update(&smoothBarVSpeed, barAlt - prevBarAlt);
-				if (vSpeed < smoothBarVSpeed.value)
-					vSpeed += vSpeedK * BAROMETER_INTERVAL;
-				else {
-					vSpeed -= vSpeedK * BAROMETER_INTERVAL;
-				}
-			}
-
 			altitude += vSpeed * dTime;
 			if (newBarAlt) {
 				if (altitude < barAlt)
@@ -423,11 +410,26 @@ void updateMotors() {
 	motors[3] = sqrtf(m4);
 	setMotors(motors);
 }
-void checkThrust() {
-	if (thrust - prevThrust > 0.5f)
+void sanityCheck() {
+	// prevent randomly flying to the ceiling
+	if (thrust - prevThrust > 0.2f)
 	{
 		STATE = EMERGENCY;
 		ERROR_ID = TOO_HIGH_THRUST_CHANGE;
+		startEmergencyLoop();
+	}
+
+	//prevent flying around the room while cutting everywhing with propellers if can't control orientation
+	if (fabsf(target.pitch - rotation.pitch) < 10.0f
+		&& fabsf(target.roll - rotation.roll) < 10.0f) 
+	{
+		orientationFailTimeout = currentLoopTicks;
+	}
+
+	if (currentLoopTicks - orientationFailTimeout > ticksPerSecond*2)
+	{
+		STATE = EMERGENCY;
+		ERROR_ID = ORIENTATION_FAIL;
 		startEmergencyLoop();
 	}
 }
@@ -473,7 +475,7 @@ void startingLoop() {
 		if (radio_enabled)radio_startReceiving();
 	}
 	calculateAltitude();
-	checkThrust();
+	sanityCheck();
 }
 void landedLoop() {
 	calculateTime();
@@ -504,7 +506,7 @@ void landedLoop() {
 		motors[2] = 0;
 		motors[3] = 0;
 	}
-	checkThrust();
+	sanityCheck();
 }
 void flyingLoop() {
 	calculateTime();
@@ -526,7 +528,7 @@ void flyingLoop() {
 		targetAltitude = 0;
 		STATE = LANDED;
 	}
-	checkThrust();
+	sanityCheck();
 	updateMotors();
 }
 void autolandingLoop() {
@@ -554,7 +556,7 @@ void autolandingLoop() {
 		STATE = LANDED;
 	}
 
-	checkThrust();
+	sanityCheck();
 	updateMotors();
 }
 
