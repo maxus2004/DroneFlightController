@@ -19,4 +19,8 @@ typedef struct {
 	float roll;
 } euler;
 
+inline float sqrf(float a) {
+	return a * a;
+}
+
 euler quatToEuler(quat);

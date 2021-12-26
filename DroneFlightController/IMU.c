@@ -13,8 +13,8 @@
 
 float GYRO_OFFSET_X = 0, GYRO_OFFSET_Y = 0, GYRO_OFFSET_Z = 0;
 float GYRO_SCALE_X = 0.001221731, GYRO_SCALE_Y = 0.001221731, GYRO_SCALE_Z = 0.001221731;
-float ACC_OFFSET_X = 0.331298828, ACC_OFFSET_Y = 12.5709229, ACC_OFFSET_Z = -29.992981;
-float ACC_SCALE_X = 0.00476436876, ACC_SCALE_Y = 0.0047711879, ACC_SCALE_Z = 0.00475505227;
+float ACC_OFFSET_X = -17.7800903, ACC_OFFSET_Y = 7.91796875, ACC_OFFSET_Z = -4.0949707;
+float ACC_SCALE_X = 0.00477896724, ACC_SCALE_Y = 0.00480090128, ACC_SCALE_Z = 0.00479352335;
 
 void IMU_GPIO_init() {
 	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
@@ -171,7 +171,7 @@ void IMU_init() {
 	MAG_writeReg(0x24, 0b01000000); // fast read off, block data update
 
 		//gyro and accelerometer init
-	if (GYR_readReg(0x0f) != 0b01101010) {
+	if (GYR_readReg(0x0f) != 0b01101011) {
 		// gyro not connected
 		// stop program execution
 		while (1);

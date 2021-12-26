@@ -8,70 +8,20 @@
 #include "IMU.h"
 #include "time.h"
 #include "math_extras.h"
+#include "world_acceleration.h"
 #include "states.h"
 #include "PID.h"
 #include "string.h"
 #include "filter.h"
 #include "motors.h"
 #include "radio.h"
+#include "radio_hardware.h"
 #include "LPF.h"
 #include "barometer.h"
 #include "distance_sensors.h"
-
-//parameters
-bool dynamic_fps_calculation = false;
-bool radio_enabled = true;
-bool magnetometerEnabled = false;
-bool sonarUpEnabled = true;
-bool sonarDownEnabled = true;
-bool heightStabilizationOn = false;
-float altitudeKSonar = 0.1;
-float altitudeKBar = 0.05;
-float vSpeedK = 0.04;
-float FILTER_K = 0.1;
-
-
-uint32_t dTicks = 0, currentLoopTicks = 0, prevLoopTicks = 0;
-float currentLoopTime = 0, dTime = 0, fps = 0;
-float prevReceive = 0, prevRadioRestart = 0;
-euler rotation = { 0, 0, 0 };
-quat rotationQuat = { 0, 0, 0 ,0 };
-euler target = { 0, 0, 0 };
-float targetAltitude = 0;
-vec3 worldAcc = { 0, 0, 0 };
-LPF smoothXAcceleration;
-LPF smoothYAcceleration;
-LPF smoothZAcceleration;
-float thrust = 0, prevThrust = 0;
-float motors[] = { 0, 0, 0, 0 };
-float motorsTarget[] = { 0, 0, 0, 0 };
-euler torque = { 0, 0, 0 };
-float pressure = 0, temperature = 0;
-float sonarUpAlt = 0, prevSonarUpAlt = 0;
-float sonarDownAlt = 0, prevSonarDownAlt = 0;
-float barAlt = 0, prevBarAlt = 0;
-bool newBarAlt = false;
-bool newSonarUpAlt = false;
-uint32_t lastSonarUpData = 0;
-bool newSonarDownAlt = false;
-uint32_t lastSonarDownData = 0;
-LPF smoothBarVSpeed;
-float vSpeed = 0;
-float altitude = 0, prevAltitude = 0;
-uint32_t orientationFailTimeout = 10*ticksPerSecond;
-
-enum altitudeMode_t {
-	BAROMETER = 0,
-	SONAR_UP,
-	SONAR_DOWN
-};
-
-enum altitudeMode_t prevAltitideCalcMode = BAROMETER;
-enum altitudeMode_t altitideCalcMode = BAROMETER;
-float hP = 0, hI = 0, hD = 0;
-float absAcc = 0;
-uint32_t LOAD_PERCENT = 0;
-uint32_t MAX_LOAD_PERCENT = 0;
+#include "altitude.h"
+#include "parameters.h"
+#include "globals.h"
 
 void emergencyLoop() {
 	stopMotors();
@@ -84,55 +34,6 @@ void startEmergencyLoop() {
 	}
 }
 
-void sendTelemetry() {
-	typedef struct
-	{
-		uint8_t packetID;
-		euler rotation;
-		euler target;
-		vec3 absAcceleration;
-		float thrust;
-		float altitude;
-		float sonarDownAlt;
-		float targetAltitude;
-	} __attribute__((packed)) s_telemetry;
-
-	s_telemetry telemetry =
-	{
-		77,
-		rotation,
-		target,
-		worldAcc,
-		thrust,
-		altitude,
-		sonarDownAlt,
-		targetAltitude,
-	};
-	radio_sendPacket(&telemetry, sizeof(s_telemetry));
-}
-void sendTelemetryFormat() {
-	char format[][32] = {
-	"euler rotation;",
-	"euler target;",
-	"vector3 absAcceleration;",
-	"float thrust;",
-	"float altitude;",
-	"float sonarAlt;",
-	"float targetAltitude;"
-	};
-	for (int i = 0; i < sizeof(format) / sizeof(format[0]); i++) {
-		char packet[64];
-		packet[0] = 88;
-		packet[1] = i;
-		memcpy(packet + 2, format[i], strlen(format[i]));
-
-		radio_sendPacket(packet, strlen(format[i]) + 2);
-		delayMillis(50);
-		radio_sendPacket(packet, strlen(format[i]) + 2);
-		delayMillis(50);
-	}
-}
-
 void setAltitudeStabilisation(bool enabled) {
 	heightStabilizationOn = enabled;
 	if (enabled)
@@ -142,12 +43,9 @@ void setAltitudeStabilisation(bool enabled) {
 	}
 }
 void radioReceiveSend() {
-	if (radio_irq())
-	{
-		radio_processInterrupt();
-	}
+	radio_update();
 
-	if (radio_newData())
+	if (radio_controlsAvailable())
 	{
 		bool newHeightStabilizationOn;
 		float thrustChange;
@@ -175,11 +73,7 @@ void radioReceiveSend() {
 
 			if (STATE == AUTO_LANDING)STATE = FLYING;
 
-			sendTelemetry();
-		}
-		else
-		{
-			radio_startReceiving();
+			//sendTelemetry();
 		}
 	}
 }
@@ -226,34 +120,7 @@ void readData() {
 
 	rotationQuat = Madgwick_readQuaternions();
 	rotation = quatToEuler(rotationQuat);
-
-	float aw = 0, ax = acc.x, ay = acc.y, az = acc.z;
-	float qw = rotationQuat.w, qx = rotationQuat.x, qy = rotationQuat.y, qz = rotationQuat.z;
-	float qw1 = qw, qx1 = -qx, qy1 = -qy, qz1 = -qz;
-
-	float bw = qw * aw - qx * ax - qy * ay - qz * az;
-	float bx = qw * ax + qx * aw + qy * az - qz * ay;
-	float by = qw * ay - qx * az + qy * aw + qz * ax;
-	float bz = qw * az + qx * ay - qy * ax + qz * aw;
-
-	float b1x = bw * qx1 + bx * qw1 + by * qz1 - bz * qy1;
-	float b1y = bw * qy1 - bx * qz1 + by * qw1 + bz * qx1;
-	float b1z = bw * qz1 + bx * qy1 - by * qx1 + bz * qw1;
-
-	b1x *= 1.0033839f;
-	b1y *= 1.0033839f;
-	b1z *= 1.0033839f;
-
-	worldAcc.x = b1x;
-	worldAcc.y = b1y;
-	worldAcc.z = b1z - 9.81f;
-
-	absAcc = sqrtf(ax * ax + ay * ay + az * az);
-
-	LPF_update(&smoothXAcceleration, worldAcc.x);
-	LPF_update(&smoothYAcceleration, worldAcc.y);
-	LPF_update(&smoothZAcceleration, worldAcc.z);
-
+	worldAcc = calculateWorldAcc(rotationQuat, acc);
 	prevBarAlt = barAlt;
 
 	if (barometer_available()) {
@@ -281,119 +148,8 @@ void readData() {
 }
 
 
-void calculateAltitude() {
-	prevAltitude = altitude;
-	prevAltitideCalcMode = altitideCalcMode;
 
-	//select best altitude calculation mode
 
-	if (sonarDownEnabled
-		&& currentLoopTicks < lastSonarDownData + ticksPerSecond / 5
-		&& sonarDownAlt < 4
-		&& fabsf(rotation.pitch) < 15 && fabsf(rotation.roll) < 15)
-	{
-		altitideCalcMode = SONAR_DOWN;
-	}
-	else if (sonarUpEnabled
-		&& currentLoopTicks < lastSonarUpData + ticksPerSecond / 5
-		&& sonarUpAlt > -4
-		&& fabsf(rotation.pitch) < 15 && fabsf(rotation.roll) < 15)
-	{
-		altitideCalcMode = SONAR_UP;
-	}
-	else
-	{
-		altitideCalcMode = BAROMETER;
-	}
-
-	//calculate vSpeed
-	if (dTime > 0) {
-		vSpeed += worldAcc.z * dTime;
-		if (newBarAlt) {
-			LPF_update(&smoothBarVSpeed, barAlt - prevBarAlt);
-			if (vSpeed < smoothBarVSpeed.value)
-				vSpeed += vSpeedK * BAROMETER_INTERVAL;
-			else {
-				vSpeed -= vSpeedK * BAROMETER_INTERVAL;
-			}
-		}
-	}
-
-	//calculate altitude
-	if (altitideCalcMode == SONAR_DOWN)
-	{
-		if (prevAltitideCalcMode != SONAR_DOWN)
-		{
-			altitude -= prevAltitude - sonarDownAlt;
-			if (heightStabilizationOn)
-			{
-				targetAltitude = targetAltitude - (prevAltitude - altitude);
-			}
-		}
-
-		if (dTime > 0)
-		{
-			
-			altitude += vSpeed * dTime;
-			if (newSonarDownAlt) {
-				if (altitude < sonarDownAlt)
-					altitude += altitudeKSonar * SONAR_INTERVAL;
-				else {
-					altitude -= altitudeKSonar * SONAR_INTERVAL;
-				}
-			}
-		}
-
-	}
-	else if (altitideCalcMode == SONAR_UP)
-	{
-		if (prevAltitideCalcMode != SONAR_UP)
-		{
-			altitude -= prevAltitude - sonarUpAlt;
-			if (heightStabilizationOn)
-			{
-				targetAltitude = targetAltitude - (prevAltitude - altitude);
-			}
-		}
-
-		if (dTime > 0)
-		{
-			altitude += vSpeed * dTime;
-			if (newSonarUpAlt) {
-				if (altitude < sonarUpAlt)
-					altitude += altitudeKSonar * SONAR_INTERVAL;
-				else {
-					altitude -= altitudeKSonar * SONAR_INTERVAL;
-				}
-			}
-		}
-
-	}
-	else
-	{
-		if (prevAltitideCalcMode != BAROMETER)
-		{
-			altitude -= prevAltitude - barAlt;
-			if (heightStabilizationOn)
-			{
-				targetAltitude = targetAltitude - (prevAltitude - altitude);
-			}
-		}
-
-		if (dTime > 0)
-		{
-			altitude += vSpeed * dTime;
-			if (newBarAlt) {
-				if (altitude < barAlt)
-					altitude += altitudeKBar * BAROMETER_INTERVAL;
-				else {
-					altitude -= altitudeKBar * BAROMETER_INTERVAL;
-				}
-			}
-		}
-
-	}
-}
 void updateMotors() {
 	PID_update(dTime, rotation, target, &torque);
 	float m1 = thrust + torque.roll + torque.pitch - torque.yaw;
@@ -411,7 +167,7 @@ void updateMotors() {
 	setMotors(motors);
 }
 void sanityCheck() {
-	// prevent randomly flying to the ceiling
+	// TOO_HIGH_THRUST_CHANGE
 	if (thrust - prevThrust > 0.2f)
 	{
 		STATE = EMERGENCY;
@@ -419,9 +175,10 @@ void sanityCheck() {
 		startEmergencyLoop();
 	}
 
-	//prevent flying around the room while cutting everywhing with propellers if can't control orientation
-	if (fabsf(target.pitch - rotation.pitch) < 10.0f
-		&& fabsf(target.roll - rotation.roll) < 10.0f) 
+	// ORIENTATION_FAIL
+	if (thrust < 0.1 ||
+		(fabsf(target.pitch - rotation.pitch) < 10.0f
+		&& fabsf(target.roll - rotation.roll) < 10.0f)) 
 	{
 		orientationFailTimeout = currentLoopTicks;
 	}
@@ -448,9 +205,10 @@ void thrustPID() {
 	if (thrust < 0)thrust = 0;
 }
 
-float prevFILTER_K = -1;
-bool barometerZeroSet = false;
 void startingLoop() {
+	static float prevFILTER_K = -1;
+	static bool barometerZeroSet = false;
+
 	if (prevFILTER_K < 0) {
 		prevFILTER_K = FILTER_K;
 		FILTER_K = 1;
@@ -571,7 +329,8 @@ void startup() {
 		radio_init();
 	IMU_init();
 	IMU_calibrateGyro();
-	//IMU_calibrateAccel();
+	if(calibrateAccel)
+		IMU_calibrateAccel();
 	barometer_init();
 	distance_init(sonarDownEnabled, sonarUpEnabled);
 	PID_init();
@@ -581,12 +340,8 @@ void startup() {
 int main(void)
 {
 	LPF_init(&smoothBarVSpeed, 50);
-	LPF_init(&smoothZAcceleration, 1000);
-	LPF_init(&smoothXAcceleration, 1000);
-	LPF_init(&smoothYAcceleration, 1000);
 
 	startup();
-	//if (radio_enabled)sendTelemetryFormat();
 	currentLoopTicks = getTicks();
 	prevLoopTicks = getTicks();
 

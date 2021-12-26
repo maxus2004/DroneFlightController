@@ -231,6 +231,21 @@
     <ClCompile Include="disnace_sensors.c">
       <Filter>Source files</Filter>
     </ClCompile>
+    <ClCompile Include="radio_hardware.c">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="world_acceleration.c">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="altitude.c">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="parameters.c">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="globals.c">
+      <Filter>Source files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cpu_clock.h">
@@ -267,6 +282,21 @@
       <Filter>Source files</Filter>
     </ClInclude>
     <ClInclude Include="distance_sensors.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="radio_hardware.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="world_acceleration.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="altitude.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="parameters.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="globals.h">
       <Filter>Source files</Filter>
     </ClInclude>
   </ItemGroup>
