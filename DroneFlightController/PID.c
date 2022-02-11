@@ -4,21 +4,19 @@
 //PARAMETERS--------------------------
 
 PID_params_s pid_params = {
-//   roll    pitch   yaw
-	{0.02f, 0.02f, 0.02f }, //P
-	{0.05f, 0.05f , 0.05f  }, //I
-	{0.0f , 0.003f, 0.003f }, //D
-	{0.4f , 0.5f  , 0.5f   }, //max
-	{-0.4f, -0.5f , -0.5f  }, //min
-	{0.0f , 0.1f  , 0.1f   }, //maxI
-	{ 0.0f, -0.1f , -0.1f  }  //minI
+	//   yaw    pitch   roll
+		{0.015f, 0.015f, 0.015f }, //P
+		{0.015f, 0.015f , 0.015f  }, //I
+		{0.0f , 0.0015f, 0.0015f }, //D
+		{0.4f , 0.5f  , 0.5f   }, //max
+		{-0.4f, -0.5f , -0.5f  }, //min
+		{0.0f , 0.1f  , 0.1f   }, //maxI
+		{ 0.0f, -0.1f , -0.1f  }  //minI
 };
 
 //-----------------------------------
 
-LPF d_roll_lpf = { 0 };
-LPF d_pitch_lpf = { 0 };
-LPF d_yaw_lpf = { 0 };
+LPF rotationV_LPF[3] = { 0,0,0 };
 
 PID_values_s pid_values = {
 { 0, 0, 0 },
@@ -34,9 +32,8 @@ static PID_values_s* pid = &pid_values;
 bool PID_doIntegration = false;
 
 void PID_init(void) {
-	LPF_init(&d_roll_lpf, 30);
-	LPF_init(&d_pitch_lpf, 30);
-	LPF_init(&d_yaw_lpf, 30);
+	for (int i = 0; i < 3; i++)
+		LPF_init(&rotationV_LPF[i],10);
 }
 
 void PID_resetI(void)
@@ -46,7 +43,7 @@ void PID_resetI(void)
 	pid->i.pitch = 0;
 }
 
-void PID_update(float dTime, euler rotation, euler target, euler* torque)
+void PID_update(float dTime, euler rotation, euler rotationV, euler target, euler* torque)
 {
 	//error
 	pid->E.yaw = target.yaw - rotation.yaw;
@@ -81,12 +78,12 @@ void PID_update(float dTime, euler rotation, euler target, euler* torque)
 	}
 
 	//derivative
-	LPF_update(&d_roll_lpf, pid_params.KD.roll * (-rotation.roll + pid->prev.roll) / dTime);
-	LPF_update(&d_pitch_lpf, pid_params.KD.pitch * (-rotation.pitch + pid->prev.pitch) / dTime);
-	LPF_update(&d_yaw_lpf, pid_params.KD.yaw * (-rotation.yaw + pid->prev.yaw) / dTime);
-	pid->d.roll = d_roll_lpf.value;
-	pid->d.pitch = d_pitch_lpf.value;
-	pid->d.yaw = d_yaw_lpf.value;
+	LPF_update(&rotationV_LPF[0], rotationV.roll);
+	LPF_update(&rotationV_LPF[1], rotationV.pitch);
+	LPF_update(&rotationV_LPF[2], rotationV.yaw);
+	pid->d.roll = -pid_params.KD.roll * rotationV_LPF[0].value;
+	pid->d.pitch = -pid_params.KD.pitch * rotationV_LPF[1].value;
+	pid->d.yaw = -pid_params.KD.yaw * rotationV_LPF[2].value;
 
 
 	//sum pid

@@ -31,5 +31,5 @@ extern PID_values_s pid_values;
 extern bool PID_doIntegration;
 
 void PID_init(void);
-void PID_update(float dTime, euler rotation, euler target, euler* torque);
+void PID_update(float dTime, euler rotation, euler rotationV, euler target, euler* torque);
 void PID_resetI(void);

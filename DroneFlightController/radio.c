@@ -14,7 +14,7 @@ bool radio_controlsAvailable(void) {
 
 void radio_update(void) {
 	radio_updateIRQ();
-	if (radio_newPacket) {
+	if (radio_newPacket()) {
 		data_length = radio_readPacket(data);
 
 		switch (data[0]) {
@@ -25,11 +25,7 @@ void radio_update(void) {
 	}
 }
 
-int radio_readData(void) {
-	
-}
-
-bool radio_receiveControls(float dTime, float* tx, float* ty, float* tz, float* th, bool* stabilization)
+bool radio_receiveControls(float dTime, euler* target, float* th, bool* stabilization)
 {
 	controlsAvailable = false;
 	if (data[0] != 66)
@@ -57,16 +53,23 @@ bool radio_receiveControls(float dTime, float* tx, float* ty, float* tz, float* 
 
 
 	float nth = thv * dTime;
-	float ntz = *tz + tzv * dTime;
+	float ntz = target->yaw + tzv * dTime;
 	if (ntz > 180)ntz = -180;
 	if (ntz < -180)ntz = 180;
 
 	*stabilization = (bool)data[17];
 
-	*tx = ntx;
-	*ty = nty;
-	*tz = ntz;
+	target->roll = ntx;
+	target->pitch = nty;
+	target->yaw = ntz;
 	*th = nth;
 
 	return true;
+}
+
+void radio_sendBasicTelemetry(float *batteryVoltages) {
+	uint8_t packet[1 + sizeof(float) * 3];
+	packet[0] = 77;
+	memcpy(packet + 1, batteryVoltages, sizeof(float) * 3);
+	radio_sendPacket(packet, sizeof(packet));
 }

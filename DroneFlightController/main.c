@@ -22,6 +22,8 @@
 #include "altitude.h"
 #include "parameters.h"
 #include "globals.h"
+#include "serial_port.h"
+#include "telemetry.h"
 
 void emergencyLoop() {
 	stopMotors();
@@ -29,7 +31,7 @@ void emergencyLoop() {
 }
 
 void startEmergencyLoop() {
-	while (1) {
+	while (true) {
 		emergencyLoop();
 	}
 }
@@ -42,67 +44,69 @@ void setAltitudeStabilisation(bool enabled) {
 		hI = thrust;
 	}
 }
+
 void radioReceiveSend() {
 	radio_update();
+	if (!radio_controlsAvailable()) return;
 
-	if (radio_controlsAvailable())
+	bool newHeightStabilizationOn;
+	float thrustChange;
+	float time = getSeconds();
+	bool success = radio_receiveControls(time - prevReceive, &target, &thrustChange, &newHeightStabilizationOn);
+
+	if (!success) return;
+
+	prevReceive = time;
+
+	if (newHeightStabilizationOn != heightStabilizationOn)
 	{
-		bool newHeightStabilizationOn;
-		float thrustChange;
-		float time = getSeconds();
-		bool success = radio_receiveControls(time - prevReceive, &target.roll, &target.pitch, &target.yaw, &thrustChange, &newHeightStabilizationOn);
-		if (success)
-		{
-			prevReceive = time;
-
-			if (newHeightStabilizationOn != heightStabilizationOn)
-			{
-				setAltitudeStabilisation(newHeightStabilizationOn);
-			}
-
-			if (heightStabilizationOn)
-			{
-				targetAltitude += thrustChange;
-			}
-			else
-			{
-				thrust += thrustChange;
-				if (thrust > 1) thrust = 1;
-				else if (thrust < 0) thrust = 0;
-			}
-
-			if (STATE == AUTO_LANDING)STATE = FLYING;
-
-			//sendTelemetry();
-		}
+		setAltitudeStabilisation(newHeightStabilizationOn);
 	}
+
+	if (heightStabilizationOn)
+	{
+		targetAltitude += thrustChange;
+	}
+	else
+	{
+		thrust += thrustChange;
+		if (thrust > 1) thrust = 1;
+		else if (thrust < 0) thrust = 0;
+	}
+
+	if (STATE == AUTO_LANDING)STATE = FLYING;
+
+	radio_sendBasicTelemetry(batteryVolates);
 }
 void calculateTime() {
 	prevLoopTicks = currentLoopTicks;
 	currentLoopTicks = getTicks();
 	currentLoopTime = (float)currentLoopTicks / (float)ticksPerSecond;
-	if (dynamic_fps_calculation) {
-		if (currentLoopTicks >= prevLoopTicks) {
+	if (dynamic_fps_calculation)
+	{
+		// do not calculate new dTicks value if timer overflowed
+		if (currentLoopTicks >= prevLoopTicks)
+		{
 			dTicks = currentLoopTicks - prevLoopTicks;
-			// do not calculate new dTicks value if timer overflowed
 		}
 		dTime = (float)dTicks / (float)ticksPerSecond;
 		fps = (float)ticksPerSecond / (float)dTicks;
 	}
-	else {
+	else
+	{
 		dTicks = ticksPerSecond / IMU_UPDATE_FREQUENCY;
 		dTime = 1.0f / IMU_UPDATE_FREQUENCY;
 		fps = IMU_UPDATE_FREQUENCY;
 	}
 }
+
 void readData() {
-	vec3 acc, gyr, mag;
 	bool mag_available;
 
 	uint32_t startedWaiting = getTicks();
 	IMU_waitForNewData();
 	uint32_t stopedWaiting = getTicks();
-	IMU_readData(&acc, &gyr, &mag, &mag_available);
+	IMU_readData(&ACC, &GYR, &MAG, &mag_available);
 
 	if (dTicks > 0) {
 		LOAD_PERCENT = 100 - 100 * (stopedWaiting - startedWaiting) / dTicks;
@@ -113,14 +117,21 @@ void readData() {
 	{
 		Madgwick_setKoeff(fps, FILTER_K);
 		if (magnetometerEnabled)
-			Madgwick_update(&gyr, &acc, &mag);
+			Madgwick_update(&GYR, &ACC, &MAG);
 		else
-			Madgwick_updateIMU(&gyr, &acc);
+			Madgwick_updateIMU(&GYR, &ACC);
 	}
 
 	rotationQuat = Madgwick_readQuaternions();
+	if (currentLoopTicks - prevOrientationSend > telemetryInterval) {
+		prevOrientationSend = currentLoopTicks;
+		sendOrientation(&rotationQuat);
+	}
 	rotation = quatToEuler(rotationQuat);
-	worldAcc = calculateWorldAcc(rotationQuat, acc);
+	rotationV.roll = GYR.x * 57.29f;
+	rotationV.pitch = GYR.y * 57.29f;
+	rotationV.yaw = GYR.z * 57.29f;
+	worldAcc = calculateWorldAcc(rotationQuat, ACC);
 	prevBarAlt = barAlt;
 
 	if (barometer_available()) {
@@ -148,24 +159,24 @@ void readData() {
 }
 
 
-
-
 void updateMotors() {
-	PID_update(dTime, rotation, target, &torque);
-	float m1 = thrust + torque.roll + torque.pitch - torque.yaw;
-	float m2 = thrust - torque.roll + torque.pitch + torque.yaw;
-	float m3 = thrust - torque.roll - torque.pitch - torque.yaw;
-	float m4 = thrust + torque.roll - torque.pitch + torque.yaw;
-	if (m1 < 0.005)m1 = 0.005;
-	if (m2 < 0.005)m2 = 0.005;
-	if (m3 < 0.005)m3 = 0.005;
-	if (m4 < 0.005)m4 = 0.005;
+	PID_update(dTime, rotation, rotationV, target, &torque);
+	float m1 = thrust + torque.roll + torque.pitch + torque.yaw;
+	float m2 = thrust - torque.roll + torque.pitch - torque.yaw;
+	float m3 = thrust - torque.roll - torque.pitch + torque.yaw;
+	float m4 = thrust + torque.roll - torque.pitch - torque.yaw;
+	if (m1 < 0.005f)m1 = 0.005f;
+	if (m2 < 0.005f)m2 = 0.005f;
+	if (m3 < 0.005f)m3 = 0.005f;
+	if (m4 < 0.005f)m4 = 0.005f;
 	motors[0] = sqrtf(m1);
 	motors[1] = sqrtf(m2);
 	motors[2] = sqrtf(m3);
 	motors[3] = sqrtf(m4);
+
 	setMotors(motors);
 }
+
 void sanityCheck() {
 	// TOO_HIGH_THRUST_CHANGE
 	if (thrust - prevThrust > 0.2f)
@@ -176,14 +187,14 @@ void sanityCheck() {
 	}
 
 	// ORIENTATION_FAIL
-	if (thrust < 0.1 ||
+	if (thrust < 0.1f ||
 		(fabsf(target.pitch - rotation.pitch) < 10.0f
-		&& fabsf(target.roll - rotation.roll) < 10.0f)) 
+			&& fabsf(target.roll - rotation.roll) < 10.0f))
 	{
 		orientationFailTimeout = currentLoopTicks;
 	}
 
-	if (currentLoopTicks - orientationFailTimeout > ticksPerSecond*2)
+	if (currentLoopTicks - orientationFailTimeout > ticksPerSecond * 2.0f)
 	{
 		STATE = EMERGENCY;
 		ERROR_ID = ORIENTATION_FAIL;
@@ -222,12 +233,12 @@ void startingLoop() {
 		barometerZeroSet = true;
 		barometer_zeroOffset();
 	}
-	if (currentLoopTime > 8)
+	if (currentLoopTime > 8.0f)
 	{
 		FILTER_K = prevFILTER_K;
 		target.yaw = rotation.yaw;
 		altitude = barAlt;
-		vSpeed = 0;
+		vSpeed = 0.0f;
 		STATE = LANDED;
 		prevReceive = currentLoopTime;
 		if (radio_enabled)radio_startReceiving();
@@ -241,7 +252,7 @@ void landedLoop() {
 	prevThrust = thrust;
 	if (radio_enabled)radioReceiveSend();
 	calculateAltitude();
-	if (thrust > 0)
+	if (thrust > 0.0f)
 	{
 		if (thrust > 0.2f)
 		{
@@ -259,10 +270,8 @@ void landedLoop() {
 	else
 	{
 		stopMotors();
-		motors[0] = 0;
-		motors[1] = 0;
-		motors[2] = 0;
-		motors[3] = 0;
+		for (int i = 0; i < 4; i++)
+			motors[i] = 0;
 	}
 	sanityCheck();
 }
@@ -271,7 +280,7 @@ void flyingLoop() {
 	readData();
 	prevThrust = thrust;
 	if (radio_enabled)radioReceiveSend();
-	if (currentLoopTime - prevReceive > 0.5)
+	if (currentLoopTime - prevReceive > 0.5f)
 	{
 		STATE = AUTO_LANDING;
 	}
@@ -280,10 +289,10 @@ void flyingLoop() {
 	{
 		thrustPID();
 	}
-	if (thrust <= 0)
+	if (thrust <= 0.0f)
 	{
 		PID_doIntegration = false;
-		targetAltitude = 0;
+		targetAltitude = 0.0f;
 		STATE = LANDED;
 	}
 	sanityCheck();
@@ -297,7 +306,7 @@ void autolandingLoop() {
 	calculateAltitude();
 	if (heightStabilizationOn)
 	{
-		targetAltitude -= dTime * 2;
+		targetAltitude -= dTime * 2.0f;
 		thrustPID();
 	}
 	else
@@ -319,17 +328,19 @@ void autolandingLoop() {
 }
 
 void startup() {
+
 	initCpuClock();
 	initTickCounter();
 
 	delaySeconds(1);
 
 	STATE = STARTING;
+	serialPort_init();
 	if (radio_enabled)
 		radio_init();
 	IMU_init();
 	IMU_calibrateGyro();
-	if(calibrateAccel)
+	if (calibrateAccel)
 		IMU_calibrateAccel();
 	barometer_init();
 	distance_init(sonarDownEnabled, sonarUpEnabled);
@@ -339,7 +350,7 @@ void startup() {
 
 int main(void)
 {
-	LPF_init(&smoothBarVSpeed, 50);
+	LPF_init(&smoothBarVSpeed, 500);
 
 	startup();
 	currentLoopTicks = getTicks();

@@ -134,7 +134,7 @@ void DMA2_Stream5_IRQHandler(void) {
 void sendDSHOT(uint16_t values[]) {
 
 	uint32_t ticks = getTicks();
-	if (ticks - prevSend < ticksPerSecond/8000) {
+	if (ticks - prevSend < ticksPerSecond/1000) {
 		cancelledDSHOTPackets++;
 		return;
 	}
@@ -150,7 +150,9 @@ void sendDSHOT(uint16_t values[]) {
 
 		for (int j = 0; j < 16; j++)
 		{
-			DSHOT_DMA_DATA[15 - j] |= ((data >> j) % 2) ? 0 : motorPins[i];
+			if (((data >> j) % 2)==0) {
+				DSHOT_DMA_DATA[15 - j] |= motorPins[i];
+			}
 		}
 	}
 
@@ -176,8 +178,8 @@ void sendDSHOT(uint16_t values[]) {
 void setMotors(float motors[]) {
 	uint16_t values[4];
 	for (int i = 0; i < 4; i++) {
-		if (values[i] < 0)values[i] = 0;
-		if (values[i] > 1)values[i] = 1;
+		if (values[i] < 0.0f)values[i] = 0.0f;
+		if (values[i] > 1.0f)values[i] = 1.0f;
 		values[i] = (uint16_t)((motors[i]) * (float)(MAX_THROTTLE - MIN_THROTTLE)) + MIN_THROTTLE;
 	}
 	sendDSHOT(values);

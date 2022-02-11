@@ -70,31 +70,36 @@ static void USART_sendByte(USART_TypeDef* USART, uint8_t byte)
 	LL_USART_TransmitData8(USART, byte);
 }
 
+
+void pingDown() {
+	USART6_BUFFER_LEN = 0;
+	waitingDataUSART6 = true;
+	USART_sendByte(USART6, 0x55);
+}
+void pingUp() {
+	USART1_BUFFER_LEN = 0;
+	waitingDataUSART1 = true;
+	USART_sendByte(USART1, 0x55);
+}
+
 void readDistances(float* up, float* down) {
 	uint32_t ticks = getTicks();
-	if (ticks > lastPing + ticksPerSecond / 10) {
+	if (ticks > lastPing + ticksPerSecond*0.01f) {
 		lastPing = ticks;
-		if (downEnabled) {
-			USART6_BUFFER_LEN = 0;
-			waitingDataUSART6 = true;
-			USART_sendByte(USART6, 0x55);
-		}
-		if (upEnabled) {
-			USART1_BUFFER_LEN = 0;
-			waitingDataUSART1 = true;
-			USART_sendByte(USART1, 0x55);
-		}
+		if (isReadUp && upEnabled) pingUp();
+		if (isReadDown && downEnabled) pingDown();
 	}
 
 	if (isReadDown)
 		*down = -1;
-	else {
+	else if (downEnabled) {
 		*down = latestDownDist;
 		isReadDown = true;
 	}
+
 	if (isReadUp)
 		*up = -1;
-	else {
+	else if (upEnabled) {
 		*up = latestUpDist;
 		isReadUp = true;
 	}

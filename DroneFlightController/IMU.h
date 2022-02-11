@@ -16,4 +16,4 @@ void IMU_calibrateGyro();
 void IMU_calibrateAccel();
 void IMU_waitForNewData();
 
-#define IMU_UPDATE_FREQUENCY 6664;
+#define IMU_UPDATE_FREQUENCY 7000;

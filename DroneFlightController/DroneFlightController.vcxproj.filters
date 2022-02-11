@@ -246,6 +246,12 @@
     <ClCompile Include="globals.c">
       <Filter>Source files</Filter>
     </ClCompile>
+    <ClCompile Include="serial_port.c">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="telemetry.c">
+      <Filter>Source files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cpu_clock.h">
@@ -297,6 +303,12 @@
       <Filter>Source files</Filter>
     </ClInclude>
     <ClInclude Include="globals.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="serial_port.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="telemetry.h">
       <Filter>Source files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -13,8 +13,8 @@
 
 float GYRO_OFFSET_X = 0, GYRO_OFFSET_Y = 0, GYRO_OFFSET_Z = 0;
 float GYRO_SCALE_X = 0.001221731, GYRO_SCALE_Y = 0.001221731, GYRO_SCALE_Z = 0.001221731;
-float ACC_OFFSET_X = -17.7800903, ACC_OFFSET_Y = 7.91796875, ACC_OFFSET_Z = -4.0949707;
-float ACC_SCALE_X = 0.00477896724, ACC_SCALE_Y = 0.00480090128, ACC_SCALE_Z = 0.00479352335;
+float ACC_OFFSET_X = -4.05578613, ACC_OFFSET_Y = 16.0971069, ACC_OFFSET_Z = -17.2922974;
+float ACC_SCALE_X = 0.00477983849, ACC_SCALE_Y = 0.00480072526, ACC_SCALE_Z = 0.00479137758;
 
 void IMU_GPIO_init() {
 	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
@@ -260,6 +260,11 @@ void IMU_calibrateAccel() {
 	float startTime = getSeconds();
 	for (int i = 0; i < 6; i++) {
 		__asm("bkpt");
+		for (int i = 0; i < 12000; i++) {
+			int16_t ACC_data[6];
+			IMU_waitForNewData();
+			GYR_readBurst(0x22, ACC_data, 12);
+		}
 		int64_t x = 0, y = 0, z = 0;
 		for (int i = 0; i < 12000; i++) {
 			int16_t ACC_data[6];

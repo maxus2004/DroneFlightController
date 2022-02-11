@@ -16,3 +16,4 @@ extern float vSpeedK;
 extern float FILTER_K;
 extern uint32_t orientationFailTimeout;
 extern float maxSonarAngle;
+extern uint32_t telemetryInterval;

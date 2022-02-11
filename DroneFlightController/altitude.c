@@ -8,6 +8,7 @@
 
 enum altitudeMode_t prevAltitideCalcMode = BAROMETER;
 enum altitudeMode_t altitideCalcMode = BAROMETER;
+uint32_t prevModeChange = 0;
 
 void calculateAltitude() {
 	prevAltitude = altitude;
@@ -20,25 +21,31 @@ void calculateAltitude() {
 		&& sonarDownAlt < sonar_maxDistance
 		&& fabsf(rotation.pitch) < maxSonarAngle && fabsf(rotation.roll) < maxSonarAngle)
 	{
-		altitideCalcMode = SONAR_DOWN;
+		if (prevAltitideCalcMode == SONAR_UP || currentLoopTicks - prevModeChange > ticksPerSecond / 2)
+			altitideCalcMode = SONAR_DOWN;
 	}
 	else if (sonarUpEnabled
 		&& currentLoopTicks < lastSonarUpData + ticksPerSecond / 5
 		&& sonarUpAlt > -sonar_maxDistance
 		&& fabsf(rotation.pitch) < maxSonarAngle && fabsf(rotation.roll) < maxSonarAngle)
 	{
-		altitideCalcMode = SONAR_UP;
+		if (prevAltitideCalcMode == SONAR_DOWN || currentLoopTicks - prevModeChange > ticksPerSecond / 2)
+			altitideCalcMode = SONAR_UP;
 	}
 	else
 	{
 		altitideCalcMode = BAROMETER;
 	}
 
+	if (altitideCalcMode != prevAltitideCalcMode) {
+		prevModeChange = currentLoopTicks;
+	}
+
 	//calculate vSpeed
 	if (dTime > 0) {
 		vSpeed += worldAcc.z * dTime;
 		if (newBarAlt) {
-			LPF_update(&smoothBarVSpeed, barAlt - prevBarAlt);
+			LPF_update(&smoothBarVSpeed, (barAlt - prevBarAlt) / BAROMETER_INTERVAL);
 			if (vSpeed < smoothBarVSpeed.value)
 				vSpeed += vSpeedK * BAROMETER_INTERVAL;
 			else {

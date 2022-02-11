@@ -5,16 +5,18 @@
 #include <LPF.h>
 
 extern uint32_t dTicks, currentLoopTicks, prevLoopTicks;
+extern uint32_t prevOrientationSend;
 extern float currentLoopTime, dTime, fps;
 extern float prevReceive, prevRadioRestart;
 extern euler rotation;
+extern euler rotationV;
 extern quat rotationQuat;
 extern euler target;
 extern float targetAltitude;
+extern vec3 GYR, ACC, MAG;
 extern vec3 worldAcc;
 extern float thrust, prevThrust;
-extern float motors[];
-extern float motorsTarget[];
+extern float motors[4];
 extern euler torque;
 extern float pressure, temperature;
 extern float sonarUpAlt, prevSonarUpAlt;
@@ -29,5 +31,6 @@ extern float vSpeed;
 extern float altitude, prevAltitude;
 extern LPF smoothBarVSpeed;
 extern float hP, hI, hD;
+extern float batteryVolates[];
 extern uint32_t LOAD_PERCENT;
 extern uint32_t MAX_LOAD_PERCENT;

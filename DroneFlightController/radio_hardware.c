@@ -243,7 +243,7 @@ void radio_updateIRQ(void) {
 		{
 			validpackets++;
 			newPacket = true;
-			if (receiving) {
+			if (receiving && !sending) {
 				radio_writeReg(0x07, 0b00000101);
 			}
 		}
@@ -251,7 +251,7 @@ void radio_updateIRQ(void) {
 		if (status & 1 << 0)
 		{
 			crcerrors++;
-			if (receiving) {
+			if (receiving && !sending) {
 				radio_writeReg(0x07, 0b00000101);
 			}
 		}

@@ -40,7 +40,15 @@
     <ToolchainVersion>9.3.1/9.2.0/r2</ToolchainVersion>
     <MCUPropertyListFile>$(ProjectDir)stm32.props</MCUPropertyListFile>
   </PropertyGroup>
-  <ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|VisualGDB'">
+    <ClCompile>
+      <PreprocessorDefinitions>DEBUG_DEFAULT_INTERRUPT_HANDLERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|VisualGDB'">
+    <ClCompile>
+      <PreprocessorDefinitions>DEBUG_DEFAULT_INTERRUPT_HANDLERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
   </ItemGroup>
@@ -63,8 +71,10 @@
     <ClCompile Include="PID.c" />
     <ClCompile Include="radio.c" />
     <ClCompile Include="radio_hardware.c" />
+    <ClCompile Include="serial_port.c" />
     <ClCompile Include="states.c" />
     <ClCompile Include="system_stm32f4xx.c" />
+    <ClCompile Include="telemetry.c" />
     <ClCompile Include="time.c" />
     <ClCompile Include="world_acceleration.c" />
     <ClInclude Include="altitude.h" />
@@ -80,7 +90,9 @@
     <ClInclude Include="PID.h" />
     <ClInclude Include="radio.h" />
     <ClInclude Include="radio_hardware.h" />
+    <ClInclude Include="serial_port.h" />
     <ClInclude Include="states.h" />
+    <ClInclude Include="telemetry.h" />
     <ClInclude Include="time.h" />
     <ClInclude Include="world_acceleration.h" />
     <None Include="stm32.props" />
