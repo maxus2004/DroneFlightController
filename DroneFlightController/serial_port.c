@@ -9,12 +9,21 @@ static bool sending = false;
 static uint8_t txBuffer[128];
 static int txIndex = 0;
 static int txLen = 0;
+static int maxTxLen = 128;
+static uint8_t rxBuffer[128];
+static int rxIndex = 0;
+static int rxLen = 0;
+static int maxRxLen = 128;
 
 void USART2_IRQHandler(void)
 {
 	if (LL_USART_IsActiveFlag_RXNE(USART2)) {
 		//new byte interrupt
-		(void)USART2->DR;
+		uint8_t newByte = USART2->DR;
+		if (rxLen < maxRxLen) {
+			rxBuffer[rxLen] = newByte;
+			rxLen++;
+		}
 	}
 	else if (sending && LL_USART_IsActiveFlag_TXE(USART2)) {
 		//byte sent interrupt
@@ -67,12 +76,12 @@ void serialPort_init() {
 
 bool serialPort_send(void* data, int length) {
 	if (sending) {
-		if (txLen + length > 128) return false;
+		if (txLen + length > maxTxLen) return false;
 		memcpy(txBuffer+txLen, data, length);
 		txLen += length;
 	}
 	else {
-		if (length > 128) return false;
+		if (length > maxTxLen) return false;
 		memcpy(txBuffer, data, length);
 		txLen = length;
 		sending = true;
