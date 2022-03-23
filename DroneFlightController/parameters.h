@@ -17,3 +17,5 @@ extern float FILTER_K;
 extern uint32_t orientationFailTimeout;
 extern float maxSonarAngle;
 extern uint32_t telemetryInterval;
+extern uint32_t autopilot_wait_time;
+extern int max_motor_thrust;

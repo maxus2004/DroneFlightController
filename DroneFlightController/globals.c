@@ -30,3 +30,4 @@ float hP = 0, hI = 0, hD = 0;
 float batteryVolates[] = { 0, 0, 0 };
 uint32_t LOAD_PERCENT = 0;
 uint32_t MAX_LOAD_PERCENT = 0;
+enum controlModes controlMode = MANUAL;

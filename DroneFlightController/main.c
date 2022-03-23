@@ -52,11 +52,29 @@ void radioReceiveSend() {
 	bool newHeightStabilizationOn;
 	float thrustChange;
 	float time = getSeconds();
-	bool success = radio_receiveControls(time - prevReceive, &target, &thrustChange, &newHeightStabilizationOn);
+	euler newTarget;
+	newTarget.yaw = target.yaw;
+	bool success = radio_receiveControls(time - prevReceive, &newTarget, &thrustChange, &newHeightStabilizationOn);
 
 	if (!success) return;
 
 	prevReceive = time;
+
+	if (controlMode == MANUAL) {
+		target = newTarget;
+	}
+	else{
+		if (newTarget.pitch == 0 && newTarget.roll == 0 && currentLoopTicks-lastRxPacketTime<autopilot_wait_time) {
+			target.yaw = newTarget.yaw;
+			euler semiAutoTarget = getSemiAutoTarget();
+			target.roll = semiAutoTarget.roll;
+			target.pitch = semiAutoTarget.pitch;
+		}
+		else {
+			controlMode = MANUAL;
+			target = newTarget;
+		}
+	}
 
 	if (newHeightStabilizationOn != heightStabilizationOn)
 	{
@@ -125,7 +143,7 @@ void readData() {
 	rotationQuat = Madgwick_readQuaternions();
 	if (currentLoopTicks - prevOrientationSend > telemetryInterval) {
 		prevOrientationSend = currentLoopTicks;
-		sendOrientation(&rotationQuat);
+		sendTelemetrySerial();
 	}
 	rotation = quatToEuler(rotationQuat);
 	rotationV.roll = GYR.x * 57.29f;
@@ -345,7 +363,7 @@ void startup() {
 	barometer_init();
 	distance_init(sonarDownEnabled, sonarUpEnabled);
 	PID_init();
-	setupMotors(2048);
+	setupMotors(max_motor_thrust);
 }
 
 int main(void)

@@ -4,6 +4,9 @@
 #include <stdbool.h>
 #include <string.h>
 #include "serial_port.h"
+#include "globals.h"
+#include "time.h"
+
 
 static bool sending = false;
 static uint8_t txBuffer[128];
@@ -15,14 +18,59 @@ static int rxIndex = 0;
 static int rxLen = 0;
 static int maxRxLen = 128;
 
+uint32_t lastRxPacketTime = 0;
+
+typedef struct {
+	uint8_t header[8];
+	float yaw;
+	float pitch;
+	float roll;
+	float thrust;
+} rxPacket_t;
+
+uint8_t rxPacketHeader[8] = { 50,51,52,53,54,55,56,57 };
+
+rxPacket_t lastRxPacket;
+
+void processPacket(rxPacket_t* packet) {
+	lastRxPacketTime = currentLoopTicks;
+	controlMode = SEMI_AUTO;
+	memcpy(&lastRxPacket, packet, sizeof(rxPacket_t));
+}
+
+euler getSemiAutoTarget() {
+	euler target = {lastRxPacket.yaw,lastRxPacket.pitch,lastRxPacket.roll};
+	return target;
+}
+
 void USART2_IRQHandler(void)
 {
 	if (LL_USART_IsActiveFlag_RXNE(USART2)) {
 		//new byte interrupt
 		uint8_t newByte = USART2->DR;
-		if (rxLen < maxRxLen) {
-			rxBuffer[rxLen] = newByte;
-			rxLen++;
+
+		if (rxLen < 8) {
+			if (newByte != rxPacketHeader[rxLen]) {
+				rxLen = 0;
+			}
+			else {
+				rxBuffer[rxLen] = newByte;
+				rxLen++;
+			}
+		}
+		else {
+			if (rxLen < maxRxLen) {
+				rxBuffer[rxLen] = newByte;
+				rxLen++;
+
+				if (rxLen >= sizeof(rxPacket_t)) {
+					processPacket((rxPacket_t*)rxBuffer);
+					rxLen = 0;
+				}
+			}
+			else {
+				rxLen = 0;
+			}
 		}
 	}
 	else if (sending && LL_USART_IsActiveFlag_TXE(USART2)) {
@@ -59,7 +107,7 @@ void serialPort_init() {
 	NVIC_SetPriority(USART2_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 1, 0));
 	NVIC_EnableIRQ(USART2_IRQn);
 
-	LL_USART_SetBaudRate(USART2, SystemCoreClock/2, LL_USART_OVERSAMPLING_16, 115200);
+	LL_USART_SetBaudRate(USART2, SystemCoreClock / 2, LL_USART_OVERSAMPLING_16, 115200);
 	LL_USART_SetDataWidth(USART2, LL_USART_DATAWIDTH_8B);
 	LL_USART_SetStopBitsLength(USART2, LL_USART_STOPBITS_1);
 	LL_USART_SetParity(USART2, LL_USART_PARITY_NONE);
@@ -73,11 +121,29 @@ void serialPort_init() {
 }
 
 
+bool serialPort_sendLine(void* data, int length) {
+	if (sending) {
+		if (txLen + length + 1 > maxTxLen) return false;
+		memcpy(txBuffer + txLen, data, length);
+		txBuffer[txLen + length] = '\n';
+		txLen += length + 1;
+	}
+	else {
+		if (length + 1 > maxTxLen) return false;
+		memcpy(txBuffer, data, length);
+		txBuffer[length] = '\n';
+		txLen = length + 1;
+		sending = true;
+		txIndex = 0;
+		LL_USART_EnableIT_TXE(USART2);
+	}
+	return true;
+}
 
 bool serialPort_send(void* data, int length) {
 	if (sending) {
 		if (txLen + length > maxTxLen) return false;
-		memcpy(txBuffer+txLen, data, length);
+		memcpy(txBuffer + txLen, data, length);
 		txLen += length;
 	}
 	else {

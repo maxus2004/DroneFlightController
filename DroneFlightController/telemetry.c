@@ -3,10 +3,14 @@
 #include "math_extras.h"
 #include <stdint.h>
 #include <string.h>
+#include "globals.h"
 
-void sendOrientation(quat* r) {
-	uint8_t data[sizeof(float) * 4 + 1];
-	memcpy(data, r, sizeof(float) * 4);
-	data[sizeof(float) * 4] = '\n';
-	serialPort_send(data, sizeof(float) * 4+1);
+typedef struct{
+	quat rotation;
+	euler target;
+} telemetryData_t;
+
+void sendTelemetrySerial() {
+	telemetryData_t data = {rotationQuat, target};
+	serialPort_sendLine(&data, sizeof(data));
 }

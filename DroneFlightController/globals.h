@@ -34,3 +34,10 @@ extern float hP, hI, hD;
 extern float batteryVolates[];
 extern uint32_t LOAD_PERCENT;
 extern uint32_t MAX_LOAD_PERCENT;
+
+enum controlModes {
+	MANUAL,
+	SEMI_AUTO
+};
+
+extern enum controlModes controlMode;
